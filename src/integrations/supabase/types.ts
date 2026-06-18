@@ -14,7 +14,102 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      contacts: {
+        Row: {
+          created_at: string
+          id: string
+          name: string | null
+          phone_number: string
+          profile_picture_url: string | null
+          status: Database["public"]["Enums"]["contact_status"]
+          updated_at: string
+          user_id: string
+          whatsapp_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          name?: string | null
+          phone_number: string
+          profile_picture_url?: string | null
+          status?: Database["public"]["Enums"]["contact_status"]
+          updated_at?: string
+          user_id: string
+          whatsapp_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          name?: string | null
+          phone_number?: string
+          profile_picture_url?: string | null
+          status?: Database["public"]["Enums"]["contact_status"]
+          updated_at?: string
+          user_id?: string
+          whatsapp_id?: string
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          created_at: string
+          email: string | null
+          full_name: string | null
+          id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          email?: string | null
+          full_name?: string | null
+          id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          email?: string | null
+          full_name?: string | null
+          id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      whatsapp_instances: {
+        Row: {
+          api_key: string
+          api_url: string
+          connection_status: string
+          created_at: string
+          id: string
+          instance_name: string
+          last_sync_at: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          api_key: string
+          api_url: string
+          connection_status?: string
+          created_at?: string
+          id?: string
+          instance_name: string
+          last_sync_at?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          api_key?: string
+          api_url?: string
+          connection_status?: string
+          created_at?: string
+          id?: string
+          instance_name?: string
+          last_sync_at?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
@@ -23,7 +118,7 @@ export type Database = {
       [_ in never]: never
     }
     Enums: {
-      [_ in never]: never
+      contact_status: "pendente" | "aprovado" | "inapto"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -150,6 +245,8 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      contact_status: ["pendente", "aprovado", "inapto"],
+    },
   },
 } as const
