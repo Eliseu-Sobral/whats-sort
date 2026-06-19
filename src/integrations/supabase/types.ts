@@ -14,6 +14,30 @@ export type Database = {
   }
   public: {
     Tables: {
+      app_settings: {
+        Row: {
+          api_key: string | null
+          api_url: string | null
+          id: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          api_key?: string | null
+          api_url?: string | null
+          id?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          api_key?: string | null
+          api_url?: string | null
+          id?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
       contacts: {
         Row: {
           created_at: string
@@ -97,8 +121,8 @@ export type Database = {
       }
       whatsapp_instances: {
         Row: {
-          api_key: string
-          api_url: string
+          api_key: string | null
+          api_url: string | null
           connection_status: string
           created_at: string
           id: string
@@ -108,8 +132,8 @@ export type Database = {
           user_id: string
         }
         Insert: {
-          api_key: string
-          api_url: string
+          api_key?: string | null
+          api_url?: string | null
           connection_status?: string
           created_at?: string
           id?: string
@@ -119,8 +143,8 @@ export type Database = {
           user_id: string
         }
         Update: {
-          api_key?: string
-          api_url?: string
+          api_key?: string | null
+          api_url?: string | null
           connection_status?: string
           created_at?: string
           id?: string
