@@ -1,8 +1,8 @@
 import { createFileRoute, Outlet, redirect, Link, useRouter } from "@tanstack/react-router";
 import { supabase } from "@/integrations/supabase/client";
-import { useAuth } from "@/hooks/use-auth";
+import { useAuth, useMyRole } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
-import { MessageCircle, LayoutGrid, Settings, Users, LogOut } from "lucide-react";
+import { MessageCircle, LayoutGrid, Settings, Users, LogOut, Shield } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 
 export const Route = createFileRoute("/_authenticated")({
