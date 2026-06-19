@@ -1,6 +1,9 @@
 import { useEffect, useState } from "react";
 import type { User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
+import { useQuery } from "@tanstack/react-query";
+import { useServerFn } from "@tanstack/react-start";
+import { getMyRole } from "@/lib/admin.functions";
 
 export function useAuth() {
   const [user, setUser] = useState<User | null>(null);
@@ -18,4 +21,13 @@ export function useAuth() {
   }, []);
 
   return { user, loading };
+}
+
+export function useMyRole() {
+  const fn = useServerFn(getMyRole);
+  return useQuery({
+    queryKey: ["my-role"],
+    queryFn: () => fn(),
+    staleTime: 60_000,
+  });
 }
