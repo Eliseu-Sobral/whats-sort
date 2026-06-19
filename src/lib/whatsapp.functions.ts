@@ -3,12 +3,6 @@ import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
 
-const instanceInputSchema = z.object({
-  instance_name: z.string().min(1).max(100),
-  api_url: z.string().url().refine((u) => u.startsWith("http"), "URL inválida"),
-  api_key: z.string().min(1),
-});
-
 async function evoFetch(apiUrl: string, apiKey: string, path: string, init?: RequestInit) {
   const url = `${apiUrl.replace(/\/$/, "")}${path}`;
   const res = await fetch(url, {
@@ -29,31 +23,136 @@ async function evoFetch(apiUrl: string, apiKey: string, path: string, init?: Req
   return data;
 }
 
+async function getEvoConfig(context: any): Promise<{ api_url: string; api_key: string }> {
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  const { data, error } = await supabaseAdmin
+    .from("app_settings")
+    .select("api_url, api_key")
+    .eq("id", "evolution")
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!data?.api_url || !data?.api_key) {
+    throw new Error("A Evolution API ainda não foi configurada pelo administrador.");
+  }
+  return { api_url: data.api_url.replace(/\/$/, ""), api_key: data.api_key };
+}
+
+function slugify(s: string | null | undefined) {
+  return (s || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "")
+    .slice(0, 20) || "user";
+}
+
+// ============== Global settings (admin only) ==============
+
+export const getSettingsStatus = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async () => {
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data } = await supabaseAdmin
+      .from("app_settings").select("api_url, api_key").eq("id", "evolution").maybeSingle();
+    return { configured: !!(data?.api_url && data?.api_key) };
+  });
+
+export const getGlobalSettings = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { data: isAdmin } = await context.supabase.rpc("has_role", {
+      _user_id: context.userId, _role: "admin",
+    });
+    if (!isAdmin) throw new Error("Acesso negado.");
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data, error } = await supabaseAdmin
+      .from("app_settings").select("api_url, api_key, updated_at").eq("id", "evolution").maybeSingle();
+    if (error) throw new Error(error.message);
+    return data || { api_url: "", api_key: "", updated_at: null };
+  });
+
+export const saveGlobalSettings = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) =>
+    z.object({
+      api_url: z.string().url().refine((u) => u.startsWith("http"), "URL inválida"),
+      api_key: z.string().min(1),
+    }).parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const { data: isAdmin } = await context.supabase.rpc("has_role", {
+      _user_id: context.userId, _role: "admin",
+    });
+    if (!isAdmin) throw new Error("Acesso negado.");
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { error } = await supabaseAdmin
+      .from("app_settings")
+      .upsert({
+        id: "evolution",
+        api_url: data.api_url.replace(/\/$/, ""),
+        api_key: data.api_key,
+        updated_at: new Date().toISOString(),
+        updated_by: context.userId,
+      });
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
+// ============== Per-user instance ==============
+
 export const getInstance = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     const { data } = await context.supabase
       .from("whatsapp_instances")
-      .select("*")
+      .select("id, instance_name, connection_status, last_sync_at, created_at")
       .eq("user_id", context.userId)
       .maybeSingle();
     return data;
   });
 
-export const saveInstance = createServerFn({ method: "POST" })
+// Auto-create instance with name `wt{slug}-N` where N increments to avoid collisions.
+export const createInstance = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: unknown) => instanceInputSchema.parse(d))
-  .handler(async ({ data, context }) => {
-    const payload = {
-      user_id: context.userId,
-      instance_name: data.instance_name,
-      api_url: data.api_url.replace(/\/$/, ""),
-      api_key: data.api_key,
-      connection_status: "disconnected" as const,
-    };
+  .handler(async ({ context }) => {
+    const cfg = await getEvoConfig(context);
+
+    // Check if already exists for this user
+    const { data: existing } = await context.supabase
+      .from("whatsapp_instances").select("*").eq("user_id", context.userId).maybeSingle();
+    if (existing) return existing;
+
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+    // Determine display name from profile
+    const { data: profile } = await supabaseAdmin
+      .from("profiles").select("full_name, email").eq("id", context.userId).maybeSingle();
+    const base = `wt${slugify(profile?.full_name || profile?.email?.split("@")[0])}`;
+
+    // Find next available suffix across all instances globally
+    const { data: taken } = await supabaseAdmin
+      .from("whatsapp_instances").select("instance_name").ilike("instance_name", `${base}-%`);
+    const usedNums = new Set(
+      (taken || [])
+        .map((r) => {
+          const m = r.instance_name?.match(new RegExp(`^${base}-(\\d+)$`, "i"));
+          return m ? parseInt(m[1], 10) : null;
+        })
+        .filter((n): n is number => n !== null),
+    );
+    let n = 1;
+    while (usedNums.has(n)) n++;
+    const instance_name = `${base}-${n}`;
+
     const { data: row, error } = await context.supabase
       .from("whatsapp_instances")
-      .upsert(payload, { onConflict: "user_id" })
+      .insert({
+        user_id: context.userId,
+        instance_name,
+        api_url: cfg.api_url,
+        api_key: cfg.api_key,
+        connection_status: "disconnected",
+      })
       .select()
       .single();
     if (error) throw new Error(error.message);
@@ -64,13 +163,13 @@ export const saveInstance = createServerFn({ method: "POST" })
 export const connectInstance = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
+    const cfg = await getEvoConfig(context);
     const { data: inst } = await context.supabase
       .from("whatsapp_instances").select("*").eq("user_id", context.userId).maybeSingle();
-    if (!inst) throw new Error("Configure a instância antes de conectar.");
+    if (!inst) throw new Error("Crie a instância antes de conectar.");
 
-    // Try to create. If exists, fetch connect.
     try {
-      await evoFetch(inst.api_url, inst.api_key, "/instance/create", {
+      await evoFetch(cfg.api_url, cfg.api_key, "/instance/create", {
         method: "POST",
         body: JSON.stringify({
           instanceName: inst.instance_name,
@@ -78,15 +177,12 @@ export const connectInstance = createServerFn({ method: "POST" })
           integration: "WHATSAPP-BAILEYS",
         }),
       });
-    } catch (e: any) {
-      // ignore "already exists" errors and fall through to connect
-      if (!/already|exists|in use/i.test(e?.message || "")) {
-        // continue anyway — might still be connectable
-      }
+    } catch {
+      // ignore "already exists" — continue to connect
     }
 
     const conn = await evoFetch(
-      inst.api_url, inst.api_key,
+      cfg.api_url, cfg.api_key,
       `/instance/connect/${encodeURIComponent(inst.instance_name)}`,
     );
 
@@ -105,12 +201,13 @@ export const connectInstance = createServerFn({ method: "POST" })
 export const checkConnection = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
+    const cfg = await getEvoConfig(context);
     const { data: inst } = await context.supabase
       .from("whatsapp_instances").select("*").eq("user_id", context.userId).maybeSingle();
     if (!inst) return { state: "disconnected" };
 
     const res = await evoFetch(
-      inst.api_url, inst.api_key,
+      cfg.api_url, cfg.api_key,
       `/instance/connectionState/${encodeURIComponent(inst.instance_name)}`,
     );
     const state: string =
@@ -127,13 +224,16 @@ export const checkConnection = createServerFn({ method: "POST" })
 export const disconnectInstance = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
+    const cfg = await getEvoConfig(context).catch(() => null);
     const { data: inst } = await context.supabase
       .from("whatsapp_instances").select("*").eq("user_id", context.userId).maybeSingle();
     if (!inst) return { ok: true };
-    try {
-      await evoFetch(inst.api_url, inst.api_key,
-        `/instance/logout/${encodeURIComponent(inst.instance_name)}`, { method: "DELETE" });
-    } catch {}
+    if (cfg) {
+      try {
+        await evoFetch(cfg.api_url, cfg.api_key,
+          `/instance/logout/${encodeURIComponent(inst.instance_name)}`, { method: "DELETE" });
+      } catch {}
+    }
     await context.supabase
       .from("whatsapp_instances")
       .update({ connection_status: "disconnected" })
@@ -146,13 +246,13 @@ function onlyDigits(s: string) { return (s || "").replace(/\D/g, ""); }
 export const syncContacts = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
+    const cfg = await getEvoConfig(context);
     const { data: inst } = await context.supabase
       .from("whatsapp_instances").select("*").eq("user_id", context.userId).maybeSingle();
-    if (!inst) throw new Error("Configure a instância antes de sincronizar.");
+    if (!inst) throw new Error("Crie a instância antes de sincronizar.");
 
-    // Evolution API: POST /chat/findContacts/{instance}
     const raw = await evoFetch(
-      inst.api_url, inst.api_key,
+      cfg.api_url, cfg.api_key,
       `/chat/findContacts/${encodeURIComponent(inst.instance_name)}`,
       { method: "POST", body: JSON.stringify({ where: {} }) },
     );
@@ -182,7 +282,6 @@ export const syncContacts = createServerFn({ method: "POST" })
       return { imported: 0, total: 0 };
     }
 
-    // Upsert in chunks. ignoreDuplicates: false but only set non-status cols
     const chunkSize = 500;
     let imported = 0;
     for (let i = 0; i < rows.length; i += chunkSize) {
