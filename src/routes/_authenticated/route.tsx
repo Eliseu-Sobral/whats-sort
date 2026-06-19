@@ -17,6 +17,7 @@ export const Route = createFileRoute("/_authenticated")({
 
 function AuthLayout() {
   const { user } = useAuth();
+  const { data: role } = useMyRole();
   const router = useRouter();
   const qc = useQueryClient();
 
@@ -41,6 +42,9 @@ function AuthLayout() {
           <NavItem to="/dashboard" icon={<LayoutGrid className="size-4" />} label="Triagem" />
           <NavItem to="/contacts" icon={<Users className="size-4" />} label="Contatos" />
           <NavItem to="/settings" icon={<Settings className="size-4" />} label="Configurações" />
+          {role?.isAdmin && (
+            <NavItem to="/admin" icon={<Shield className="size-4" />} label="Admin" />
+          )}
         </nav>
 
         <div className="p-3 border-t border-border">
