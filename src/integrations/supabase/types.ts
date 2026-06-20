@@ -38,6 +38,110 @@ export type Database = {
         }
         Relationships: []
       }
+      campaign_recipients: {
+        Row: {
+          campaign_id: string
+          contact_id: string | null
+          created_at: string
+          error: string | null
+          id: string
+          name: string | null
+          phone_number: string
+          sent_at: string | null
+          status: string
+          whatsapp_id: string
+        }
+        Insert: {
+          campaign_id: string
+          contact_id?: string | null
+          created_at?: string
+          error?: string | null
+          id?: string
+          name?: string | null
+          phone_number: string
+          sent_at?: string | null
+          status?: string
+          whatsapp_id: string
+        }
+        Update: {
+          campaign_id?: string
+          contact_id?: string | null
+          created_at?: string
+          error?: string | null
+          id?: string
+          name?: string | null
+          phone_number?: string
+          sent_at?: string | null
+          status?: string
+          whatsapp_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "campaign_recipients_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaigns"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      campaigns: {
+        Row: {
+          created_at: string
+          current_streak: number
+          failed_count: number
+          finished_at: string | null
+          id: string
+          last_status_text: string | null
+          media_url: string | null
+          message: string
+          name: string
+          next_run_at: string | null
+          sent_count: number
+          started_at: string | null
+          status: string
+          total: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          current_streak?: number
+          failed_count?: number
+          finished_at?: string | null
+          id?: string
+          last_status_text?: string | null
+          media_url?: string | null
+          message: string
+          name: string
+          next_run_at?: string | null
+          sent_count?: number
+          started_at?: string | null
+          status?: string
+          total?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          current_streak?: number
+          failed_count?: number
+          finished_at?: string | null
+          id?: string
+          last_status_text?: string | null
+          media_url?: string | null
+          message?: string
+          name?: string
+          next_run_at?: string | null
+          sent_count?: number
+          started_at?: string | null
+          status?: string
+          total?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       contacts: {
         Row: {
           created_at: string
@@ -115,6 +219,39 @@ export type Database = {
           created_at?: string
           id?: string
           role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: []
+      }
+      whatsapp_groups: {
+        Row: {
+          created_at: string
+          description: string | null
+          evo_group_id: string | null
+          id: string
+          members_count: number
+          name: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          evo_group_id?: string | null
+          id?: string
+          members_count?: number
+          name: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          evo_group_id?: string | null
+          id?: string
+          members_count?: number
+          name?: string
+          updated_at?: string
           user_id?: string
         }
         Relationships: []
