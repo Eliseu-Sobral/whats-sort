@@ -89,6 +89,15 @@ function AdminPage() {
     onError: (e: any) => toast.error(e.message),
   });
 
+  const setApproval = useMutation({
+    mutationFn: (v: { user_id: string; approved: boolean }) => setApprovalFn({ data: v }),
+    onSuccess: (_d, v) => {
+      toast.success(v.approved ? "Usuário aprovado" : "Aprovação revogada");
+      qc.invalidateQueries({ queryKey: ["admin-users"] });
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+
   return (
     <div className="px-10 py-8 max-w-7xl mx-auto">
       <header className="mb-8">
