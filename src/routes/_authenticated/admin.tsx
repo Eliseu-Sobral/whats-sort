@@ -40,6 +40,7 @@ function AdminPage() {
   const setRoleFn = useServerFn(adminSetUserRole);
   const delUserFn = useServerFn(adminDeleteUser);
   const delInstFn = useServerFn(adminDeleteInstance);
+  const setApprovalFn = useServerFn(adminSetApproval);
 
   const [search, setSearch] = useState("");
 
