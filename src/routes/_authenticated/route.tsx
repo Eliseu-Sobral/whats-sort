@@ -81,16 +81,6 @@ function PendingApproval({ email }: { email?: string | null }) {
   );
 }
 
-function Wrapper() { return null; /* keep below for nav */ }
-void Wrapper;
-function _unused() {
-  return (
-    <main className="ml-60 min-h-screen">
-      <Outlet />
-    </main>
-  );
-}
-void _unused;
 
 function NavItem({ to, icon, label }: { to: string; icon: React.ReactNode; label: string }) {
   return (
