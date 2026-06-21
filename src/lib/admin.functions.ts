@@ -14,13 +14,14 @@ async function assertAdmin(context: any) {
 export const getMyRole = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
-    const { data, error } = await context.supabase
-      .from("user_roles")
-      .select("role")
-      .eq("user_id", context.userId);
+    const [{ data: rolesData, error }, { data: profile }] = await Promise.all([
+      context.supabase.from("user_roles").select("role").eq("user_id", context.userId),
+      context.supabase.from("profiles").select("is_approved").eq("id", context.userId).maybeSingle(),
+    ]);
     if (error) throw new Error(error.message);
-    const roles = (data || []).map((r) => r.role);
-    return { isAdmin: roles.includes("admin"), roles };
+    const roles = (rolesData || []).map((r) => r.role);
+    const isAdmin = roles.includes("admin");
+    return { isAdmin, roles, isApproved: isAdmin || !!profile?.is_approved };
   });
 
 export const adminListUsers = createServerFn({ method: "GET" })
