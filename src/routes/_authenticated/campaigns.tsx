@@ -68,7 +68,7 @@ function CampaignsPage() {
         </p>
       </header>
 
-      {isLoading ? (
+      {isLoading && !campaigns ? (
         <div className="text-sm text-muted-foreground">Carregando…</div>
       ) : !campaigns?.length ? (
         <Card className="bg-surface border-border p-12 text-center">
