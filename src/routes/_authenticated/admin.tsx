@@ -197,6 +197,18 @@ function AdminPage() {
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex gap-1 justify-end">
+                        {!isAdmin && (
+                          <Button
+                            variant="ghost" size="sm"
+                            onClick={() => setApproval.mutate({ user_id: u.id, approved: !approved })}
+                            disabled={setApproval.isPending}
+                            title={approved ? "Revogar aprovação" : "Aprovar usuário"}
+                          >
+                            {approved
+                              ? <UserX className="size-4 text-warning" />
+                              : <UserCheck className="size-4 text-success" />}
+                          </Button>
+                        )}
                         <Button
                           variant="ghost" size="sm"
                           onClick={() => setRole.mutate({ user_id: u.id, role: "admin", grant: !isAdmin })}
