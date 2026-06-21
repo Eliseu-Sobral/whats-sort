@@ -151,11 +151,23 @@ function AdminPage() {
               {filtered.map((u) => {
                 const isAdmin = u.roles.includes("admin");
                 const connected = u.instance?.connection_status === "open" || u.instance?.connection_status === "connected";
+                const approved = (u as any).is_approved as boolean;
                 return (
-                  <TableRow key={u.id}>
+                  <TableRow key={u.id} className={!approved ? "bg-warning/5" : undefined}>
                     <TableCell>
                       <div className="font-medium text-sm">{u.full_name || "—"}</div>
                       <div className="text-xs text-muted-foreground">{u.email}</div>
+                    </TableCell>
+                    <TableCell>
+                      {approved ? (
+                        <Badge variant="outline" className="border-success/40 text-success">
+                          <CheckCircle2 className="size-3 mr-1" /> Aprovado
+                        </Badge>
+                      ) : (
+                        <Badge variant="outline" className="border-warning/40 text-warning">
+                          <Clock className="size-3 mr-1" /> Pendente
+                        </Badge>
+                      )}
                     </TableCell>
                     <TableCell>
                       <Badge variant="outline" className={isAdmin ? "border-primary/40 text-primary" : "border-border text-muted-foreground"}>
