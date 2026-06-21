@@ -2,7 +2,8 @@ import { createFileRoute, Outlet, redirect, Link, useRouter } from "@tanstack/re
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth, useMyRole } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
-import { MessageCircle, LayoutGrid, Settings, Users, LogOut, Shield, Megaphone } from "lucide-react";
+import { MessageCircle, LayoutGrid, Settings, Users, LogOut, Shield, Megaphone, Clock } from "lucide-react";
+import { Card } from "@/components/ui/card";
 import { useQueryClient } from "@tanstack/react-query";
 
 export const Route = createFileRoute("/_authenticated")({
@@ -57,11 +58,29 @@ function AuthLayout() {
       </aside>
 
       <main className="ml-60 min-h-screen">
-        <Outlet />
+        {role && !role.isApproved ? <PendingApproval email={user?.email} /> : <Outlet />}
       </main>
     </div>
   );
 }
+
+function PendingApproval({ email }: { email?: string | null }) {
+  return (
+    <div className="min-h-screen flex items-center justify-center p-6">
+      <Card className="bg-surface border-border p-8 max-w-md text-center">
+        <div className="size-12 mx-auto rounded-full bg-warning/10 border border-warning/30 flex items-center justify-center mb-4">
+          <Clock className="size-5 text-warning" />
+        </div>
+        <h2 className="text-lg font-semibold tracking-tight">Conta aguardando aprovação</h2>
+        <p className="text-sm text-muted-foreground mt-2">
+          Sua conta <span className="text-foreground">{email}</span> ainda não foi liberada pelo administrador.
+          Você poderá usar o sistema assim que sua conta for aprovada.
+        </p>
+      </Card>
+    </div>
+  );
+}
+
 
 function NavItem({ to, icon, label }: { to: string; icon: React.ReactNode; label: string }) {
   return (

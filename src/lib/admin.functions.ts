@@ -14,13 +14,14 @@ async function assertAdmin(context: any) {
 export const getMyRole = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
-    const { data, error } = await context.supabase
-      .from("user_roles")
-      .select("role")
-      .eq("user_id", context.userId);
+    const [{ data: rolesData, error }, { data: profile }] = await Promise.all([
+      context.supabase.from("user_roles").select("role").eq("user_id", context.userId),
+      context.supabase.from("profiles").select("is_approved").eq("id", context.userId).maybeSingle(),
+    ]);
     if (error) throw new Error(error.message);
-    const roles = (data || []).map((r) => r.role);
-    return { isAdmin: roles.includes("admin"), roles };
+    const roles = (rolesData || []).map((r) => r.role);
+    const isAdmin = roles.includes("admin");
+    return { isAdmin, roles, isApproved: isAdmin || !!profile?.is_approved };
   });
 
 export const adminListUsers = createServerFn({ method: "GET" })
@@ -37,6 +38,7 @@ export const adminListUsers = createServerFn({ method: "GET" })
       .from("whatsapp_instances")
       .select("user_id, instance_name, connection_status, last_sync_at");
     const { data: contactCounts } = await supabaseAdmin.from("contacts").select("user_id, status");
+    const { data: profiles } = await supabaseAdmin.from("profiles").select("id, is_approved");
 
     const rolesByUser = new Map<string, string[]>();
     (roles || []).forEach((r) => {
@@ -48,6 +50,9 @@ export const adminListUsers = createServerFn({ method: "GET" })
     const instByUser = new Map<string, any>();
     (instances || []).forEach((i) => instByUser.set(i.user_id, i));
 
+    const approvedByUser = new Map<string, boolean>();
+    (profiles || []).forEach((p) => approvedByUser.set(p.id, !!p.is_approved));
+
     const countsByUser = new Map<string, { total: number; aprovado: number; inapto: number; pendente: number }>();
     (contactCounts || []).forEach((c) => {
       const cur = countsByUser.get(c.user_id) || { total: 0, aprovado: 0, inapto: 0, pendente: 0 };
@@ -56,16 +61,36 @@ export const adminListUsers = createServerFn({ method: "GET" })
       countsByUser.set(c.user_id, cur);
     });
 
-    return usersList.users.map((u) => ({
-      id: u.id,
-      email: u.email,
-      full_name: (u.user_metadata?.full_name as string) || (u.user_metadata?.name as string) || null,
-      created_at: u.created_at,
-      last_sign_in_at: u.last_sign_in_at,
-      roles: rolesByUser.get(u.id) || [],
-      instance: instByUser.get(u.id) || null,
-      contacts: countsByUser.get(u.id) || { total: 0, aprovado: 0, inapto: 0, pendente: 0 },
-    }));
+    return usersList.users.map((u) => {
+      const userRoles = rolesByUser.get(u.id) || [];
+      return {
+        id: u.id,
+        email: u.email,
+        full_name: (u.user_metadata?.full_name as string) || (u.user_metadata?.name as string) || null,
+        created_at: u.created_at,
+        last_sign_in_at: u.last_sign_in_at,
+        roles: userRoles,
+        is_approved: userRoles.includes("admin") || approvedByUser.get(u.id) || false,
+        instance: instByUser.get(u.id) || null,
+        contacts: countsByUser.get(u.id) || { total: 0, aprovado: 0, inapto: 0, pendente: 0 },
+      };
+    });
+  });
+
+export const adminSetApproval = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) =>
+    z.object({ user_id: z.string().uuid(), approved: z.boolean() }).parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { error } = await supabaseAdmin
+      .from("profiles")
+      .update({ is_approved: data.approved })
+      .eq("id", data.user_id);
+    if (error) throw new Error(error.message);
+    return { ok: true };
   });
 
 export const adminSetUserRole = createServerFn({ method: "POST" })

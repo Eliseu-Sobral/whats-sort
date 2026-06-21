@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useState, useMemo } from "react";
 import {
-  adminListUsers, adminSetUserRole, adminDeleteUser, adminDeleteInstance, adminStats, getMyRole,
+  adminListUsers, adminSetUserRole, adminDeleteUser, adminDeleteInstance, adminStats, adminSetApproval, getMyRole,
 } from "@/lib/admin.functions";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -17,7 +17,7 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
-import { Loader2, Shield, ShieldOff, Trash2, Users, MessageCircle, CheckCircle2, Search, PowerOff } from "lucide-react";
+import { Loader2, Shield, ShieldOff, Trash2, Users, MessageCircle, CheckCircle2, Search, PowerOff, UserCheck, UserX, Clock } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/admin")({
   ssr: false,
@@ -40,6 +40,7 @@ function AdminPage() {
   const setRoleFn = useServerFn(adminSetUserRole);
   const delUserFn = useServerFn(adminDeleteUser);
   const delInstFn = useServerFn(adminDeleteInstance);
+  const setApprovalFn = useServerFn(adminSetApproval);
 
   const [search, setSearch] = useState("");
 
@@ -88,6 +89,15 @@ function AdminPage() {
     onError: (e: any) => toast.error(e.message),
   });
 
+  const setApproval = useMutation({
+    mutationFn: (v: { user_id: string; approved: boolean }) => setApprovalFn({ data: v }),
+    onSuccess: (_d, v) => {
+      toast.success(v.approved ? "Usuário aprovado" : "Aprovação revogada");
+      qc.invalidateQueries({ queryKey: ["admin-users"] });
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+
   return (
     <div className="px-10 py-8 max-w-7xl mx-auto">
       <header className="mb-8">
@@ -129,6 +139,7 @@ function AdminPage() {
             <TableHeader>
               <TableRow>
                 <TableHead>Usuário</TableHead>
+                <TableHead>Status</TableHead>
                 <TableHead>Papel</TableHead>
                 <TableHead>Instância WhatsApp</TableHead>
                 <TableHead className="text-right">Contatos</TableHead>
@@ -140,11 +151,23 @@ function AdminPage() {
               {filtered.map((u) => {
                 const isAdmin = u.roles.includes("admin");
                 const connected = u.instance?.connection_status === "open" || u.instance?.connection_status === "connected";
+                const approved = (u as any).is_approved as boolean;
                 return (
-                  <TableRow key={u.id}>
+                  <TableRow key={u.id} className={!approved ? "bg-warning/5" : undefined}>
                     <TableCell>
                       <div className="font-medium text-sm">{u.full_name || "—"}</div>
                       <div className="text-xs text-muted-foreground">{u.email}</div>
+                    </TableCell>
+                    <TableCell>
+                      {approved ? (
+                        <Badge variant="outline" className="border-success/40 text-success">
+                          <CheckCircle2 className="size-3 mr-1" /> Aprovado
+                        </Badge>
+                      ) : (
+                        <Badge variant="outline" className="border-warning/40 text-warning">
+                          <Clock className="size-3 mr-1" /> Pendente
+                        </Badge>
+                      )}
                     </TableCell>
                     <TableCell>
                       <Badge variant="outline" className={isAdmin ? "border-primary/40 text-primary" : "border-border text-muted-foreground"}>
@@ -174,6 +197,18 @@ function AdminPage() {
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex gap-1 justify-end">
+                        {!isAdmin && (
+                          <Button
+                            variant="ghost" size="sm"
+                            onClick={() => setApproval.mutate({ user_id: u.id, approved: !approved })}
+                            disabled={setApproval.isPending}
+                            title={approved ? "Revogar aprovação" : "Aprovar usuário"}
+                          >
+                            {approved
+                              ? <UserX className="size-4 text-warning" />
+                              : <UserCheck className="size-4 text-success" />}
+                          </Button>
+                        )}
                         <Button
                           variant="ghost" size="sm"
                           onClick={() => setRole.mutate({ user_id: u.id, role: "admin", grant: !isAdmin })}
@@ -211,7 +246,7 @@ function AdminPage() {
               })}
               {filtered.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center text-sm text-muted-foreground py-10">
+                  <TableCell colSpan={7} className="text-center text-sm text-muted-foreground py-10">
                     Nenhum usuário encontrado.
                   </TableCell>
                 </TableRow>
