@@ -25,7 +25,13 @@ function CampaignDetail() {
   const { data } = useQuery({
     queryKey: ["campaign", id],
     queryFn: () => get({ data: { id } }),
-    refetchInterval: 3000,
+    refetchInterval: (q) => {
+      const c = (q.state.data as any)?.campaign;
+      return c?.status === "running" ? 10000 : false;
+    },
+    refetchOnWindowFocus: false,
+    staleTime: 5_000,
+    placeholderData: (prev) => prev,
   });
 
   const action = useMutation({
