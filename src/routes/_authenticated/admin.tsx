@@ -139,6 +139,7 @@ function AdminPage() {
             <TableHeader>
               <TableRow>
                 <TableHead>Usuário</TableHead>
+                <TableHead>Status</TableHead>
                 <TableHead>Papel</TableHead>
                 <TableHead>Instância WhatsApp</TableHead>
                 <TableHead className="text-right">Contatos</TableHead>
