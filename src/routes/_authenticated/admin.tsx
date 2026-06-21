@@ -246,7 +246,7 @@ function AdminPage() {
               })}
               {filtered.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center text-sm text-muted-foreground py-10">
+                  <TableCell colSpan={7} className="text-center text-sm text-muted-foreground py-10">
                     Nenhum usuário encontrado.
                   </TableCell>
                 </TableRow>
