@@ -5,7 +5,6 @@ import { Button } from "@/components/ui/button";
 import { MessageCircle, LayoutGrid, Settings, Users, LogOut, Shield, Megaphone, Clock } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { useQueryClient } from "@tanstack/react-query";
-import { useQueryClient } from "@tanstack/react-query";
 
 export const Route = createFileRoute("/_authenticated")({
   ssr: false,
