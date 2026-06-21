@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useState, useMemo } from "react";
 import {
-  adminListUsers, adminSetUserRole, adminDeleteUser, adminDeleteInstance, adminStats, getMyRole,
+  adminListUsers, adminSetUserRole, adminDeleteUser, adminDeleteInstance, adminStats, adminSetApproval, getMyRole,
 } from "@/lib/admin.functions";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -17,7 +17,7 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
-import { Loader2, Shield, ShieldOff, Trash2, Users, MessageCircle, CheckCircle2, Search, PowerOff } from "lucide-react";
+import { Loader2, Shield, ShieldOff, Trash2, Users, MessageCircle, CheckCircle2, Search, PowerOff, UserCheck, UserX, Clock } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/admin")({
   ssr: false,
