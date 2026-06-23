@@ -25,6 +25,5 @@ services:
 networks:
   traefik-public:
     external: true
-env_file:
-  - .env
+
    
