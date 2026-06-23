@@ -21,8 +21,8 @@ FROM node:22-alpine AS runner
 
 WORKDIR /app
 
-# Copiar a saída do build (.output contém servidor + assets)
-COPY --from=builder /app/.output ./.output
+# Copiar a saída do build (servidor SSR + assets estáticos)
+COPY --from=builder /app/dist ./dist
 
 # Variáveis padrão (sobrescritas pelo docker-compose/.env em produção)
 ENV NODE_ENV=production
@@ -31,5 +31,5 @@ ENV HOST=0.0.0.0
 
 EXPOSE 3000
 
-# Iniciar o servidor Nitro/TanStack Start gerado
-CMD ["node", ".output/server/index.mjs"]
+# Iniciar o servidor TanStack Start gerado para Node.js
+CMD ["node", "dist/server/index.mjs"]
