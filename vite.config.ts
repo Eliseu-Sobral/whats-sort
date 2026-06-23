@@ -7,15 +7,15 @@
 import { defineConfig } from "@lovable.dev/vite-tanstack-config";
 
 // Allow switching the nitro build preset via env (e.g. BUILD_PRESET=node-server for VPS/Docker).
-const preset = process.env.BUILD_PRESET;
+const preset = process.env.BUILD_PRESET || "node-server";
 
 export default defineConfig({
-  tanstackStart: {
-    // Redirect TanStack Start's bundled server entry to src/server.ts (our SSR error wrapper).
-    // nitro/vite builds from this
+  nitro: {
+    preset,
+    // O TanStack Start v1 utiliza o entry do servidor em src/server.ts
     server: {
       entry: "server",
-      ...(preset ? { preset } : {}),
     },
   },
 });
+
