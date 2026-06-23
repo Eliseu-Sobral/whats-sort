@@ -1,27 +1,22 @@
 # ---------- Build stage ----------
-FROM oven/bun:1.2 AS builder
+FROM node:22-alpine AS builder
+
 WORKDIR /app
 
-# Install deps (better cache)
-COPY package.json bun.lockb* bunfig.toml* ./
-RUN bun install --frozen-lockfile || bun install
+COPY package.json package-lock.json* bun.lockb* ./
 
-# Copy source and build with the Node server preset (for VPS/Docker)
+RUN npm install
+
 COPY . .
-ENV BUILD_PRESET=node-server
-RUN bun run build
+
+RUN npm run build
+
 
 # ---------- Runtime stage ----------
-FROM node:22-alpine AS runner
-WORKDIR /app
+FROM nginx:alpine AS runner
 
-ENV NODE_ENV=production
-ENV PORT=3000
-ENV HOST=0.0.0.0
+COPY --from=builder /app/dist /usr/share/nginx/html
 
-# Nitro's node-server preset produces a self-contained .output dir
-COPY --from=builder /app/.output ./.output
+EXPOSE 80
 
-EXPOSE 3000
-
-CMD ["node", ".output/server/index.mjs"]
+CMD ["nginx", "-g", "daemon off;"]
