@@ -19,8 +19,7 @@ services:
       - SUPABASE_PUBLISHABLE_KEY=${SUPABASE_PUBLISHABLE_KEY}
       - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
 
-    networks:
-      - traefik-public
+   
 
     labels:
       - "traefik.enable=true"
