@@ -10,12 +10,17 @@ import { defineConfig } from "@lovable.dev/vite-tanstack-config";
 const preset = process.env.BUILD_PRESET || "node-server";
 
 export default defineConfig({
-  nitro: {
-    preset,
-    // O TanStack Start v1 utiliza o entry do servidor em src/server.ts
+  // Redirect TanStack Start's bundled server entry to src/server.ts.
+  tanstackStart: {
     server: {
       entry: "server",
     },
   },
+  // Nitro preset controls the deploy target (cloudflare-module on Lovable Cloud,
+  // node-server for Docker/VPS).
+  nitro: {
+    preset,
+  },
 });
+
 
