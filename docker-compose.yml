@@ -19,13 +19,11 @@ services:
       - "traefik.enable=true"
       - "traefik.http.routers.whatsmarketing.rule=Host(`whats.legio13.cloud`)"
       - "traefik.http.routers.whatsmarketing.entrypoints=websecure"
-      # 👇 Alterado para 'le' (padrão extremamente comum que substitui o 'letsencrypt')
-      - "traefik.http.routers.whatsmarketing.tls.certresolver=default"
+      # 👇 Removemos o nome do resolver e forçamos o TLS genérico ativo
+      - "traefik.http.routers.whatsmarketing.tls=true"
       - "traefik.docker.network=whatsmarketing"
       - "traefik.http.services.whatsmarketing.loadbalancer.server.port=3000"
 
 networks:
   whatsmarketing:
     external: true
-
-   
