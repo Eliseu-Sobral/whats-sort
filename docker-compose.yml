@@ -13,24 +13,21 @@ services:
       - SUPABASE_URL=${SUPABASE_URL}
       - SUPABASE_PUBLISHABLE_KEY=${SUPABASE_PUBLISHABLE_KEY}
       - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
+    
+    # 👇 Reexpõe a porta de forma segura apenas internamente para o localhost da VPS
+    ports:
+      - "127.0.0.1:3000:3000"
+      
     networks:
-      - whatsmarketing
+      - bridge
+
     labels:
       - "traefik.enable=true"
-      
-      # Configuração do Roteador (Router)
-      - "traefik.http.routers.whatsmarketing-router.rule=Host(`whats.legio13.cloud`)"
-      - "traefik.http.routers.whatsmarketing-router.entrypoints=websecure"
-      - "traefik.http.routers.whatsmarketing-router.tls=true"
-      - "traefik.http.routers.whatsmarketing-router.service=whatsmarketing-service"
-      
-      # Configuração do Serviço Interno (Service)
-      - "traefik.http.services.whatsmarketing-service.loadbalancer.server.port=3000"
-      - "traefik.http.services.whatsmarketing-service.loadbalancer.server.scheme=http"
-      
-      # Forçar a rede correta de comunicação
-      - "traefik.docker.network=whatsmarketing"
+      - "traefik.http.routers.whatsmarketing.rule=Host(`whats.legio13.cloud`)"
+      - "traefik.http.routers.whatsmarketing.entrypoints=websecure"
+      - "traefik.http.routers.whatsmarketing.tls=true"
+      - "traefik.http.services.whatsmarketing.loadbalancer.server.port=3000"
 
 networks:
-  whatsmarketing:
+  bridge:
     external: true
