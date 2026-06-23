@@ -16,6 +16,22 @@ services:
       SUPABASE_URL: ${SUPABASE_URL}
       SUPABASE_PUBLISHABLE_KEY: ${SUPABASE_PUBLISHABLE_KEY}
       SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY}
+
+    networks:
+      - traefik-public
+
+    labels:
+      - "traefik.enable=true"
+      # 👇 ALCONTEÇA AQUI: Coloque o seu subdomínio correto configurado na Hostinger
+      - "traefik.http.routers.whatsmarketing.rule=Host(`whats.legio13.cloud`)"
+      - "traefik.http.routers.whatsmarketing.entrypoints=websecure"
+      # 👇 ALCONTEÇA AQUI: Certifique-se de que o nome do seu resolver do Traefik é 'letsencrypt'
+      - "traefik.http.routers.whatsmarketing.tls.certresolver=letsencrypt"
+      - "traefik.http.services.whatsmarketing.loadbalancer.server.port=3000"
+
+    networks:
+      traefik-public:
+        external: true
     env_file:
       - .env
    
