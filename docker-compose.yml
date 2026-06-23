@@ -19,7 +19,7 @@ services:
       - "traefik.enable=true"
       - "traefik.http.routers.whatsmarketing.rule=Host(`whats.legio13.cloud`)"
       - "traefik.http.routers.whatsmarketing.entrypoints=websecure"
-      - "traefik.http.routers.whatsmarketing.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.whatsmarketing.tls.certresolver=leresolver"
       - "traefik.http.services.whatsmarketing.loadbalancer.server.port=3000"
 
 networks:
