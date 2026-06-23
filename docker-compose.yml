@@ -1,11 +1,10 @@
 services:
   app:
     build: .
-    image: whatsapp-app:latest
     container_name: whatsapp-app
     restart: unless-stopped
     ports:
-      - "3000:3000"
+      - "3000:80"
     environment:
       NODE_ENV: production
       PORT: 3000
