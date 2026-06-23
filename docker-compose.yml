@@ -14,7 +14,7 @@ services:
       - SUPABASE_PUBLISHABLE_KEY=${SUPABASE_PUBLISHABLE_KEY}
       - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
     networks:
-      - traefik-public
+      - portainer_default
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.whatsmarketing.rule=Host(`whats.legio13.cloud`)"
@@ -23,7 +23,7 @@ services:
       - "traefik.http.services.whatsmarketing.loadbalancer.server.port=3000"
 
 networks:
-  traefik-public:
+  portainer_default:
     external: true
 
    
