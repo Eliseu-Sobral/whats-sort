@@ -3,6 +3,16 @@ FROM oven/bun:1.2-alpine AS builder
 
 WORKDIR /app
 
+# 👇 ADICIONE SUAS CHAVES AQUI COMO ARGUMENTOS PADOÕES (Substitua pelos seus dados reais do Supabase)
+ARG SUPABASE_URL="https://wfkqfhtyptmkqyisebkr.supabase.co"
+ARG SUPABASE_PUBLISHABLE_KEY="sb_publishable_h1o-T62OuPnnyXdS2Vzxlg_ms8MuNYb"
+
+# 👇 Vincula os argumentos às variáveis de ambiente que o Vite/TanStack vai ler no build
+ENV SUPABASE_URL=$SUPABASE_URL
+ENV SUPABASE_PUBLISHABLE_KEY=$SUPABASE_PUBLISHABLE_KEY
+ENV VITE_SUPABASE_URL=$SUPABASE_URL
+ENV VITE_SUPABASE_PUBLISHABLE_KEY=$SUPABASE_PUBLISHABLE_KEY
+
 # Copiar manifests de dependências primeiro para aproveitar o cache
 COPY package.json bun.lock* ./
 
