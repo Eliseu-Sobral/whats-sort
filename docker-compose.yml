@@ -14,20 +14,21 @@ services:
       - SUPABASE_PUBLISHABLE_KEY=${SUPABASE_PUBLISHABLE_KEY}
       - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
     
-    # 👇 Reexpõe a porta de forma segura apenas internamente para o localhost da VPS
+    # Vincula a porta ao localhost da VPS de forma segura
     ports:
       - "127.0.0.1:3000:3000"
       
     networks:
-      - bridge
+      - whatsmarketing
 
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.whatsmarketing.rule=Host(`whats.legio13.cloud`)"
       - "traefik.http.routers.whatsmarketing.entrypoints=websecure"
       - "traefik.http.routers.whatsmarketing.tls=true"
+      - "traefik.docker.network=portainer_default"
       - "traefik.http.services.whatsmarketing.loadbalancer.server.port=3000"
 
 networks:
-  bridge:
+  whatsmarketing:
     external: true
