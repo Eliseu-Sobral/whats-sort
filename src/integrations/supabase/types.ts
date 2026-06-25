@@ -18,6 +18,9 @@ export type Database = {
         Row: {
           api_key: string | null
           api_url: string | null
+          campaign_greetings: string | null
+          campaign_message_variants: string | null
+          campaign_name_fallbacks: string | null
           id: string
           updated_at: string
           updated_by: string | null
@@ -25,6 +28,9 @@ export type Database = {
         Insert: {
           api_key?: string | null
           api_url?: string | null
+          campaign_greetings?: string | null
+          campaign_message_variants?: string | null
+          campaign_name_fallbacks?: string | null
           id?: string
           updated_at?: string
           updated_by?: string | null
@@ -32,6 +38,9 @@ export type Database = {
         Update: {
           api_key?: string | null
           api_url?: string | null
+          campaign_greetings?: string | null
+          campaign_message_variants?: string | null
+          campaign_name_fallbacks?: string | null
           id?: string
           updated_at?: string
           updated_by?: string | null
@@ -93,6 +102,9 @@ export type Database = {
           finished_at: string | null
           id: string
           last_status_text: string | null
+          media_file_name: string | null
+          media_kind: string | null
+          media_mime_type: string | null
           media_url: string | null
           message: string
           name: string
@@ -111,6 +123,9 @@ export type Database = {
           finished_at?: string | null
           id?: string
           last_status_text?: string | null
+          media_file_name?: string | null
+          media_kind?: string | null
+          media_mime_type?: string | null
           media_url?: string | null
           message: string
           name: string
@@ -129,6 +144,9 @@ export type Database = {
           finished_at?: string | null
           id?: string
           last_status_text?: string | null
+          media_file_name?: string | null
+          media_kind?: string | null
+          media_mime_type?: string | null
           media_url?: string | null
           message?: string
           name?: string

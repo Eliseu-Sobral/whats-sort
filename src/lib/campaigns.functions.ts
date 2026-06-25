@@ -1,13 +1,66 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { getCampaignEngineLabel } from "@/lib/campaign-engine";
 import { z } from "zod";
+
+const campaignPayloadSchema = z.object({
+  name: z.string().min(1).max(120),
+  message: z.string().min(1).max(4000),
+  media_url: z.string().max(2_000_000).nullable().optional().default(null),
+  media_kind: z.enum(["image", "audio"]).nullable().optional().default(null),
+  media_mime_type: z.string().max(255).nullable().optional().default(null),
+  media_file_name: z.string().max(255).nullable().optional().default(null),
+});
+
+async function createCampaignWithContacts(
+  context: any,
+  campaignData: z.infer<typeof campaignPayloadSchema>,
+  contacts: Array<{ id: string; name: string | null; phone_number: string; whatsapp_id: string }>,
+) {
+  if (!contacts.length) throw new Error("Nenhum contato válido selecionado.");
+
+  const { data: campaign, error } = await context.supabase
+    .from("campaigns" as any)
+    .insert({
+      user_id: context.userId,
+      name: campaignData.name,
+      message: campaignData.message,
+      status: "draft",
+      total: contacts.length,
+      media_url: campaignData.media_url,
+      media_kind: campaignData.media_kind,
+      media_mime_type: campaignData.media_mime_type,
+      media_file_name: campaignData.media_file_name,
+      last_status_text: `Rascunho pronto para iniciar. ${getCampaignEngineLabel()}`,
+    })
+    .select()
+    .single();
+  if (error) throw new Error(error.message);
+
+  const rows = contacts.map((contact) => ({
+    campaign_id: (campaign as any).id,
+    contact_id: contact.id,
+    whatsapp_id: contact.whatsapp_id,
+    name: contact.name,
+    phone_number: contact.phone_number,
+    status: "pending",
+  }));
+
+  const chunk = 500;
+  for (let i = 0; i < rows.length; i += chunk) {
+    const { error: recipientError } = await context.supabase
+      .from("campaign_recipients" as any)
+      .insert(rows.slice(i, i + chunk));
+    if (recipientError) throw new Error(recipientError.message);
+  }
+
+  return { id: (campaign as any).id };
+}
 
 export const createCampaign = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) =>
-    z.object({
-      name: z.string().min(1).max(120),
-      message: z.string().min(1).max(4000),
+    campaignPayloadSchema.extend({
       contactIds: z.array(z.string().uuid()).min(1),
     }).parse(d),
   )
@@ -18,40 +71,25 @@ export const createCampaign = createServerFn({ method: "POST" })
       .eq("user_id", context.userId)
       .in("id", data.contactIds);
     if (cErr) throw new Error(cErr.message);
-    if (!contacts?.length) throw new Error("Nenhum contato válido selecionado.");
+    return createCampaignWithContacts(context, data, contacts || []);
+  });
 
-    const { data: campaign, error } = await context.supabase
-      .from("campaigns" as any)
-      .insert({
-        user_id: context.userId,
-        name: data.name,
-        message: data.message,
-        status: "draft",
-        total: contacts.length,
-        last_status_text: "Rascunho — pronto para iniciar",
-      })
-      .select()
-      .single();
+export const createCampaignFromApproved = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => campaignPayloadSchema.parse(d))
+  .handler(async ({ data, context }) => {
+    const { data: contacts, error } = await context.supabase
+      .from("contacts")
+      .select("id, name, phone_number, whatsapp_id")
+      .eq("user_id", context.userId)
+      .eq("status", "aprovado")
+      .order("updated_at", { ascending: false });
     if (error) throw new Error(error.message);
-
-    const rows = contacts.map((c: any) => ({
-      campaign_id: (campaign as any).id,
-      contact_id: c.id,
-      whatsapp_id: c.whatsapp_id,
-      name: c.name,
-      phone_number: c.phone_number,
-      status: "pending",
-    }));
-
-    const chunk = 500;
-    for (let i = 0; i < rows.length; i += chunk) {
-      const { error: rErr } = await context.supabase
-        .from("campaign_recipients" as any)
-        .insert(rows.slice(i, i + chunk));
-      if (rErr) throw new Error(rErr.message);
+    if (!contacts?.length) {
+      throw new Error("Nenhum contato aprovado disponível para criar a campanha.");
     }
 
-    return { id: (campaign as any).id };
+    return createCampaignWithContacts(context, data, contacts);
   });
 
 export const listCampaigns = createServerFn({ method: "GET" })
@@ -101,7 +139,7 @@ export const startCampaign = createServerFn({ method: "POST" })
     await setStatus(context, data.id, "running", {
       next_run_at: new Date().toISOString(),
       started_at: new Date().toISOString(),
-      last_status_text: "Iniciando disparos…",
+      last_status_text: `Iniciando disparos. ${getCampaignEngineLabel()}`,
     });
     return { ok: true };
   });
@@ -120,7 +158,7 @@ export const resumeCampaign = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     await setStatus(context, data.id, "running", {
       next_run_at: new Date().toISOString(),
-      last_status_text: "Retomando disparos…",
+      last_status_text: `Retomando disparos. ${getCampaignEngineLabel()}`,
     });
     return { ok: true };
   });

@@ -2,6 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { getCampaign, startCampaign, pauseCampaign, resumeCampaign } from "@/lib/campaigns.functions";
+import { getCampaignEngineLabel } from "@/lib/campaign-engine";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -86,6 +87,9 @@ function CampaignDetail() {
         <div className="text-sm text-muted-foreground mb-3">
           {c?.last_status_text || "Aguardando início."}
         </div>
+        <div className="text-xs text-muted-foreground">
+          {getCampaignEngineLabel()}
+        </div>
         {c?.status === "running" && countdown !== null && (
           <div className="text-xs text-muted-foreground">
             Próximo evento em <span className="text-foreground tabular-nums">{formatCountdown(countdown)}</span>
@@ -104,7 +108,24 @@ function CampaignDetail() {
       <Card className="bg-surface border-border p-5 mb-4">
         <div className="text-sm font-medium mb-2">Mensagem</div>
         <div className="text-sm text-muted-foreground whitespace-pre-wrap">{c?.message}</div>
+        <div className="text-xs text-muted-foreground mt-3">
+          Variaveis configuraveis: {`{{saudacao}}`} {`{{nome}}`} {`{{primeiro_nome}}`} {`{{nome_ou_variavel}}`} {`{{variacao}}`}.
+        </div>
       </Card>
+
+      {c?.media_kind && c?.media_url && (
+        <Card className="bg-surface border-border p-5 mb-4">
+          <div className="text-sm font-medium mb-2">Anexo</div>
+          <div className="text-xs text-muted-foreground mb-3">
+            Tipo: {c.media_kind === "audio" ? "audio" : "imagem"}{c.media_file_name ? ` - ${c.media_file_name}` : ""}
+          </div>
+          {c.media_kind === "image" ? (
+            <img src={c.media_url} alt="" className="max-h-80 rounded border border-border object-contain" />
+          ) : (
+            <audio controls src={c.media_url} className="w-full" />
+          )}
+        </Card>
+      )}
 
       <Card className="bg-surface border-border overflow-hidden">
         <div className="px-4 py-3 border-b border-border text-sm font-medium">Destinatários ({recipients.length})</div>

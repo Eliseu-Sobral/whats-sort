@@ -66,9 +66,19 @@ export const getGlobalSettings = createServerFn({ method: "GET" })
     if (!isAdmin) throw new Error("Acesso negado.");
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { data, error } = await supabaseAdmin
-      .from("app_settings").select("api_url, api_key, updated_at").eq("id", "evolution").maybeSingle();
+      .from("app_settings")
+      .select("api_url, api_key, campaign_greetings, campaign_name_fallbacks, campaign_message_variants, updated_at")
+      .eq("id", "evolution")
+      .maybeSingle();
     if (error) throw new Error(error.message);
-    return data || { api_url: "", api_key: "", updated_at: null };
+    return data || {
+      api_url: "",
+      api_key: "",
+      campaign_greetings: "",
+      campaign_name_fallbacks: "",
+      campaign_message_variants: "",
+      updated_at: null,
+    };
   });
 
 export const saveGlobalSettings = createServerFn({ method: "POST" })
@@ -77,6 +87,9 @@ export const saveGlobalSettings = createServerFn({ method: "POST" })
     z.object({
       api_url: z.string().url().refine((u) => u.startsWith("http"), "URL inválida"),
       api_key: z.string().min(1),
+      campaign_greetings: z.string().max(4000).optional().default(""),
+      campaign_name_fallbacks: z.string().max(4000).optional().default(""),
+      campaign_message_variants: z.string().max(8000).optional().default(""),
     }).parse(d),
   )
   .handler(async ({ data, context }) => {
@@ -91,6 +104,9 @@ export const saveGlobalSettings = createServerFn({ method: "POST" })
         id: "evolution",
         api_url: data.api_url.replace(/\/$/, ""),
         api_key: data.api_key,
+        campaign_greetings: data.campaign_greetings,
+        campaign_name_fallbacks: data.campaign_name_fallbacks,
+        campaign_message_variants: data.campaign_message_variants,
         updated_at: new Date().toISOString(),
         updated_by: context.userId,
       });
@@ -303,14 +319,37 @@ export const syncContacts = createServerFn({ method: "POST" })
 export const getStats = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
-    const { data } = await context.supabase
-      .from("contacts").select("status").eq("user_id", context.userId);
-    const list = data || [];
+    const baseQuery = () => context.supabase
+      .from("contacts")
+      .select("*", { count: "exact", head: true })
+      .eq("user_id", context.userId);
+
+    const [
+      totalResult,
+      pendenteResult,
+      aprovadoResult,
+      inaptoResult,
+    ] = await Promise.all([
+      baseQuery(),
+      baseQuery().eq("status", "pendente"),
+      baseQuery().eq("status", "aprovado"),
+      baseQuery().eq("status", "inapto"),
+    ]);
+
+    const errors = [
+      totalResult.error,
+      pendenteResult.error,
+      aprovadoResult.error,
+      inaptoResult.error,
+    ].filter(Boolean);
+
+    if (errors.length > 0) throw new Error(errors[0]!.message);
+
     return {
-      total: list.length,
-      pendente: list.filter((c) => c.status === "pendente").length,
-      aprovado: list.filter((c) => c.status === "aprovado").length,
-      inapto: list.filter((c) => c.status === "inapto").length,
+      total: totalResult.count || 0,
+      pendente: pendenteResult.count || 0,
+      aprovado: aprovadoResult.count || 0,
+      inapto: inaptoResult.count || 0,
     };
   });
 
@@ -350,16 +389,30 @@ export const updateContactStatus = createServerFn({ method: "POST" })
 export const listContacts = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) =>
-    z.object({ status: z.enum(["aprovado", "inapto", "pendente", "all"]).default("aprovado") }).parse(d),
+    z.object({
+      status: z.enum(["aprovado", "inapto", "pendente", "all"]).default("aprovado"),
+      page: z.number().int().min(1).default(1),
+      pageSize: z.number().int().min(1).max(250).default(250),
+    }).parse(d),
   )
   .handler(async ({ data, context }) => {
+    const from = (data.page - 1) * data.pageSize;
+    const to = from + data.pageSize - 1;
     let q = context.supabase.from("contacts")
-      .select("id, name, phone_number, profile_picture_url, status, updated_at")
+      .select("id, name, phone_number, profile_picture_url, status, updated_at", { count: "exact" })
       .eq("user_id", context.userId);
     if (data.status !== "all") q = q.eq("status", data.status);
-    const { data: rows, error } = await q.order("updated_at", { ascending: false });
+    const { data: rows, error, count } = await q
+      .order("updated_at", { ascending: false })
+      .range(from, to);
     if (error) throw new Error(error.message);
-    return rows || [];
+    return {
+      rows: rows || [],
+      total: count || 0,
+      page: data.page,
+      pageSize: data.pageSize,
+      totalPages: count ? Math.ceil(count / data.pageSize) : 0,
+    };
   });
 
 export const exportApproved = createServerFn({ method: "GET" })

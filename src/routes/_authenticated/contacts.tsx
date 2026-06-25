@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { listContacts, exportApproved, updateContactStatus, resetContacts } from "@/lib/whatsapp.functions";
 import { createGroup } from "@/lib/groups.functions";
 import { createCampaign } from "@/lib/campaigns.functions";
@@ -25,6 +25,27 @@ export const Route = createFileRoute("/_authenticated/contacts")({
 });
 
 type Status = "aprovado" | "inapto" | "pendente" | "all";
+type VisiblePage = number | "ellipsis-start" | "ellipsis-end";
+type CampaignFormValue = {
+  name: string;
+  message: string;
+  media_url?: string | null;
+  media_kind?: "image" | "audio" | null;
+  media_mime_type?: string | null;
+  media_file_name?: string | null;
+};
+
+const PAGE_SIZE = 7;
+const MAX_MEDIA_SIZE_BYTES = 10 * 1024 * 1024;
+
+function getVisiblePages(currentPage: number, totalPages: number): VisiblePage[] {
+  if (totalPages <= 7) return Array.from({ length: totalPages }, (_, index) => index + 1);
+  if (currentPage <= 4) return [1, 2, 3, 4, 5, "ellipsis-end", totalPages];
+  if (currentPage >= totalPages - 3) {
+    return [1, "ellipsis-start", totalPages - 4, totalPages - 3, totalPages - 2, totalPages - 1, totalPages];
+  }
+  return [1, "ellipsis-start", currentPage - 1, currentPage, currentPage + 1, "ellipsis-end", totalPages];
+}
 
 function ContactsPage() {
   const qc = useQueryClient();
@@ -37,17 +58,31 @@ function ContactsPage() {
   const mkCampaign = useServerFn(createCampaign);
 
   const [status, setStatus] = useState<Status>("aprovado");
+  const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<Record<string, boolean>>({});
   const [groupOpen, setGroupOpen] = useState(false);
   const [campaignOpen, setCampaignOpen] = useState(false);
 
-  const { data: contacts, isLoading } = useQuery({
-    queryKey: ["contacts", status],
-    queryFn: () => list({ data: { status } }),
+  const { data: contactsData, isLoading } = useQuery({
+    queryKey: ["contacts", status, page],
+    queryFn: () => list({ data: { status, page, pageSize: PAGE_SIZE } }),
   });
 
+  const contacts = contactsData?.rows ?? [];
+  const totalContacts = contactsData?.total ?? 0;
+  const totalPages = contactsData?.totalPages ?? 0;
+  const visiblePages = getVisiblePages(page, totalPages);
+
+  useEffect(() => {
+    if (totalPages === 0 && page !== 1) {
+      setPage(1);
+      return;
+    }
+    if (totalPages > 0 && page > totalPages) setPage(totalPages);
+  }, [page, totalPages]);
+
   const selectedIds = useMemo(
-    () => Object.entries(selected).filter(([, v]) => v).map(([k]) => k),
+    () => Object.entries(selected).filter(([, value]) => value).map(([id]) => id),
     [selected],
   );
 
@@ -58,30 +93,43 @@ function ContactsPage() {
 
   const resetMut = useMutation({
     mutationFn: () => reset({ data: { scope: "inapto" } }),
-    onSuccess: () => { toast.success("Inaptos restaurados para pendente"); qc.invalidateQueries(); },
+    onSuccess: () => {
+      toast.success("Inaptos restaurados para pendente");
+      qc.invalidateQueries();
+    },
   });
 
   const groupMut = useMutation({
     mutationFn: (vars: { name: string; description: string }) =>
       mkGroup({ data: { name: vars.name, description: vars.description, contactIds: selectedIds } }),
-    onSuccess: (r: any) => {
-      toast.success(`Grupo criado com ${r.members} membros`);
+    onSuccess: (result: any) => {
+      toast.success(`Grupo criado com ${result.members} membros`);
       setGroupOpen(false);
       setSelected({});
     },
-    onError: (e: any) => toast.error(e.message),
+    onError: (error: any) => toast.error(error.message),
   });
 
   const campaignMut = useMutation({
-    mutationFn: (vars: { name: string; message: string }) =>
-      mkCampaign({ data: { name: vars.name, message: vars.message, contactIds: selectedIds } }),
-    onSuccess: (r: any) => {
+    mutationFn: (vars: CampaignFormValue) =>
+      mkCampaign({
+        data: {
+          name: vars.name,
+          message: vars.message,
+          contactIds: selectedIds,
+          media_url: vars.media_url,
+          media_kind: vars.media_kind,
+          media_mime_type: vars.media_mime_type,
+          media_file_name: vars.media_file_name,
+        },
+      }),
+    onSuccess: (result: any) => {
       toast.success("Campanha criada como rascunho");
       setCampaignOpen(false);
       setSelected({});
-      navigate({ to: "/campaigns/$id", params: { id: r.id } });
+      navigate({ to: "/campaigns/$id", params: { id: result.id } });
     },
-    onError: (e: any) => toast.error(e.message),
+    onError: (error: any) => toast.error(error.message),
   });
 
   async function handleExport(fmt: "xlsx" | "csv") {
@@ -95,15 +143,37 @@ function ContactsPage() {
     toast.success(`${rows.length} contatos exportados`);
   }
 
-  const allChecked = !!contacts?.length && contacts.every((c: any) => selected[c.id]);
+  const allChecked = contacts.length > 0 && contacts.every((contact: any) => selected[contact.id]);
+
   function toggleAll() {
-    if (allChecked) setSelected({});
-    else {
-      const next: Record<string, boolean> = {};
-      contacts!.forEach((c: any) => (next[c.id] = true));
-      setSelected(next);
+    if (allChecked) {
+      setSelected((current) => {
+        const next = { ...current };
+        contacts.forEach((contact: any) => delete next[contact.id]);
+        return next;
+      });
+      return;
+    }
+
+    setSelected((current) => {
+      const next = { ...current };
+      contacts.forEach((contact: any) => {
+        next[contact.id] = true;
+      });
+      return next;
+    });
+  }
+
+  function goToPage(nextPage: number) {
+    if (nextPage < 1 || nextPage > totalPages || nextPage === page) return;
+    setPage(nextPage);
+    if (typeof window !== "undefined") {
+      window.scrollTo({ top: 0, behavior: "smooth" });
     }
   }
+
+  const firstVisibleItem = totalContacts === 0 ? 0 : ((page - 1) * PAGE_SIZE) + 1;
+  const lastVisibleItem = totalContacts === 0 ? 0 : firstVisibleItem + contacts.length - 1;
 
   return (
     <div className="px-10 py-8 max-w-6xl mx-auto">
@@ -127,7 +197,15 @@ function ContactsPage() {
         </div>
       </header>
 
-      <Tabs value={status} onValueChange={(v) => { setStatus(v as Status); setSelected({}); }} className="mb-4">
+      <Tabs
+        value={status}
+        onValueChange={(value) => {
+          setStatus(value as Status);
+          setPage(1);
+          setSelected({});
+        }}
+        className="mb-4"
+      >
         <TabsList className="bg-muted">
           <TabsTrigger value="aprovado">Aprovados</TabsTrigger>
           <TabsTrigger value="pendente">Pendentes</TabsTrigger>
@@ -155,54 +233,70 @@ function ContactsPage() {
       <Card className="bg-surface border-border overflow-hidden">
         {isLoading ? (
           <div className="p-8 text-center text-muted-foreground text-sm">Carregando…</div>
-        ) : !contacts?.length ? (
+        ) : !contacts.length ? (
           <div className="p-12 text-center text-muted-foreground text-sm">Nenhum contato nesta categoria.</div>
         ) : (
           <>
             {status === "aprovado" && (
               <div className="px-4 py-2 border-b border-border flex items-center gap-3">
                 <Checkbox checked={allChecked} onCheckedChange={toggleAll} />
-                <span className="text-xs text-muted-foreground">Selecionar todos</span>
+                <span className="text-xs text-muted-foreground">Selecionar todos desta página</span>
               </div>
             )}
             <div className="divide-y divide-border">
-              {contacts.map((c: any) => (
-                <div key={c.id} className="flex items-center gap-3 px-4 py-3 hover:bg-secondary/30 transition-colors">
+              {contacts.map((contact: any) => (
+                <div key={contact.id} className="flex items-center gap-3 px-4 py-3 hover:bg-secondary/30 transition-colors">
                   {status === "aprovado" && (
                     <Checkbox
-                      checked={!!selected[c.id]}
-                      onCheckedChange={(v) => setSelected((s) => ({ ...s, [c.id]: !!v }))}
+                      checked={!!selected[contact.id]}
+                      onCheckedChange={(value) => setSelected((current) => ({ ...current, [contact.id]: !!value }))}
                     />
                   )}
-                  {c.profile_picture_url ? (
-                    <img src={c.profile_picture_url} alt="" className="size-9 rounded-full object-cover border border-border"
-                      onError={(e) => ((e.currentTarget as HTMLImageElement).style.display = "none")} />
+                  {contact.profile_picture_url ? (
+                    <img
+                      src={contact.profile_picture_url}
+                      alt=""
+                      className="size-9 rounded-full object-cover border border-border"
+                      onError={(event) => ((event.currentTarget as HTMLImageElement).style.display = "none")}
+                    />
                   ) : (
                     <div className="size-9 rounded-full bg-secondary border border-border flex items-center justify-center text-xs font-medium text-muted-foreground">
-                      {(c.name || c.phone_number).slice(0,2).toUpperCase()}
+                      {(contact.name || contact.phone_number).slice(0,2).toUpperCase()}
                     </div>
                   )}
                   <div className="flex-1 min-w-0">
-                    <div className="text-sm font-medium truncate">{c.name || "Sem nome"}</div>
-                    <div className="text-xs text-muted-foreground">+{c.phone_number}</div>
+                    <div className="text-sm font-medium truncate">{contact.name || "Sem nome"}</div>
+                    <div className="text-xs text-muted-foreground">+{contact.phone_number}</div>
                   </div>
-                  <StatusBadge status={c.status} />
+                  <StatusBadge status={contact.status} />
                   <div className="flex gap-1">
-                    {c.status !== "aprovado" && (
-                      <Button size="icon" variant="ghost" className="size-8 text-success hover:bg-success/10"
-                        onClick={() => updateMut.mutate({ id: c.id, status: "aprovado" })}>
+                    {contact.status !== "aprovado" && (
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="size-8 text-success hover:bg-success/10"
+                        onClick={() => updateMut.mutate({ id: contact.id, status: "aprovado" })}
+                      >
                         <Check className="size-4" />
                       </Button>
                     )}
-                    {c.status !== "inapto" && (
-                      <Button size="icon" variant="ghost" className="size-8 text-destructive hover:bg-destructive/10"
-                        onClick={() => updateMut.mutate({ id: c.id, status: "inapto" })}>
+                    {contact.status !== "inapto" && (
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="size-8 text-destructive hover:bg-destructive/10"
+                        onClick={() => updateMut.mutate({ id: contact.id, status: "inapto" })}
+                      >
                         <X className="size-4" />
                       </Button>
                     )}
-                    {c.status !== "pendente" && (
-                      <Button size="icon" variant="ghost" className="size-8 text-muted-foreground"
-                        onClick={() => updateMut.mutate({ id: c.id, status: "pendente" })}>
+                    {contact.status !== "pendente" && (
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="size-8 text-muted-foreground"
+                        onClick={() => updateMut.mutate({ id: contact.id, status: "pendente" })}
+                      >
                         <Undo2 className="size-4" />
                       </Button>
                     )}
@@ -210,14 +304,43 @@ function ContactsPage() {
                 </div>
               ))}
             </div>
+            <div className="border-t border-border px-4 py-3 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <div className="text-sm text-muted-foreground">
+                Exibindo {firstVisibleItem}-{lastVisibleItem} de {totalContacts} contatos sincronizados
+              </div>
+              {totalPages > 1 && (
+                <div className="flex items-center gap-2 flex-wrap justify-end">
+                  <Button variant="outline" size="sm" onClick={() => goToPage(page - 1)} disabled={page === 1}>
+                    Anterior
+                  </Button>
+                  {visiblePages.map((pageItem) => (
+                    typeof pageItem === "string" ? (
+                      <span key={pageItem} className="px-2 text-sm text-muted-foreground">...</span>
+                    ) : (
+                      <Button
+                        key={pageItem}
+                        variant={pageItem === page ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => goToPage(pageItem)}
+                      >
+                        {pageItem}
+                      </Button>
+                    )
+                  ))}
+                  <Button variant="outline" size="sm" onClick={() => goToPage(page + 1)} disabled={page === totalPages}>
+                    Próxima
+                  </Button>
+                </div>
+              )}
+            </div>
           </>
         )}
       </Card>
 
       <GroupDialog open={groupOpen} onOpenChange={setGroupOpen} count={selectedIds.length}
-        onSubmit={(v) => groupMut.mutate(v)} loading={groupMut.isPending} />
+        onSubmit={(value) => groupMut.mutate(value)} loading={groupMut.isPending} />
       <CampaignDialog open={campaignOpen} onOpenChange={setCampaignOpen} count={selectedIds.length}
-        onSubmit={(v) => campaignMut.mutate(v)} loading={campaignMut.isPending} />
+        onSubmit={(value) => campaignMut.mutate(value)} loading={campaignMut.isPending} />
     </div>
   );
 }
@@ -268,10 +391,42 @@ function GroupDialog({ open, onOpenChange, count, onSubmit, loading }: {
 
 function CampaignDialog({ open, onOpenChange, count, onSubmit, loading }: {
   open: boolean; onOpenChange: (v: boolean) => void; count: number;
-  onSubmit: (v: { name: string; message: string }) => void; loading: boolean;
+  onSubmit: (v: CampaignFormValue) => void; loading: boolean;
 }) {
   const [name, setName] = useState("");
   const [message, setMessage] = useState("");
+  const [mediaPreview, setMediaPreview] = useState<string | null>(null);
+  const [mediaKind, setMediaKind] = useState<"image" | "audio" | null>(null);
+  const [mediaMimeType, setMediaMimeType] = useState<string | null>(null);
+  const [mediaFileName, setMediaFileName] = useState<string | null>(null);
+
+  async function handleFileChange(file: File | null) {
+    if (!file) {
+      setMediaPreview(null);
+      setMediaKind(null);
+      setMediaMimeType(null);
+      setMediaFileName(null);
+      return;
+    }
+
+    if (file.size > MAX_MEDIA_SIZE_BYTES) {
+      toast.error("O arquivo deve ter no maximo 10 MB.");
+      return;
+    }
+
+    const nextKind = getMediaKind(file);
+    if (!nextKind) {
+      toast.error("Envie apenas imagem ou audio.");
+      return;
+    }
+
+    const dataUrl = await readFileAsDataUrl(file);
+    setMediaPreview(dataUrl);
+    setMediaKind(nextKind);
+    setMediaMimeType(file.type || null);
+    setMediaFileName(file.name || null);
+  }
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="bg-surface">
@@ -292,14 +447,59 @@ function CampaignDialog({ open, onOpenChange, count, onSubmit, loading }: {
             <Textarea value={message} onChange={(e) => setMessage(e.target.value)} rows={6}
               placeholder="Texto que será enviado para cada destinatário." />
           </div>
+          <div>
+            <Label>Arquivo opcional (foto ou áudio)</Label>
+            <Input
+              type="file"
+              accept="image/*,audio/*"
+              onChange={(e) => void handleFileChange(e.target.files?.[0] || null)}
+            />
+            <p className="text-xs text-muted-foreground mt-1">
+              Variáveis disponíveis: {`{{saudacao}}`} {`{{nome}}`} {`{{primeiro_nome}}`} {`{{nome_ou_variavel}}`} {`{{variacao}}`}.
+            </p>
+            {mediaKind === "image" && mediaPreview && (
+              <img src={mediaPreview} alt="" className="mt-3 max-h-48 rounded border border-border object-contain" />
+            )}
+            {mediaKind === "audio" && mediaPreview && (
+              <audio controls src={mediaPreview} className="mt-3 w-full" />
+            )}
+            {mediaFileName && (
+              <div className="mt-2 text-xs text-muted-foreground">Arquivo selecionado: {mediaFileName}</div>
+            )}
+          </div>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
-          <Button onClick={() => onSubmit({ name, message })} disabled={!name.trim() || !message.trim() || loading}>
+          <Button
+            onClick={() => onSubmit({
+              name,
+              message,
+              media_url: mediaPreview,
+              media_kind: mediaKind,
+              media_mime_type: mediaMimeType,
+              media_file_name: mediaFileName,
+            })}
+            disabled={!name.trim() || !message.trim() || loading}
+          >
             {loading ? "Criando…" : "Criar campanha"}
           </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
   );
+}
+
+function getMediaKind(file: File) {
+  if (file.type.startsWith("image/")) return "image" as const;
+  if (file.type.startsWith("audio/")) return "audio" as const;
+  return null;
+}
+
+function readFileAsDataUrl(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(new Error("Nao foi possivel ler o arquivo selecionado."));
+    reader.readAsDataURL(file);
+  });
 }

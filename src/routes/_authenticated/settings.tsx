@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { Loader2, QrCode, Power, RefreshCw, Save, Plus, Shield, AlertTriangle } from "lucide-react";
@@ -202,10 +203,24 @@ function GlobalSettingsCard() {
   const saveCfg = useServerFn(saveGlobalSettings);
 
   const { data: cfg, isLoading } = useQuery({ queryKey: ["global-settings"], queryFn: () => getCfg() });
-  const [form, setForm] = useState({ api_url: "", api_key: "" });
+  const [form, setForm] = useState({
+    api_url: "",
+    api_key: "",
+    campaign_greetings: "",
+    campaign_name_fallbacks: "",
+    campaign_message_variants: "",
+  });
 
   useEffect(() => {
-    if (cfg) setForm({ api_url: cfg.api_url || "", api_key: cfg.api_key || "" });
+    if (cfg) {
+      setForm({
+        api_url: cfg.api_url || "",
+        api_key: cfg.api_key || "",
+        campaign_greetings: cfg.campaign_greetings || "",
+        campaign_name_fallbacks: cfg.campaign_name_fallbacks || "",
+        campaign_message_variants: cfg.campaign_message_variants || "",
+      });
+    }
   }, [cfg]);
 
   const saveMut = useMutation({
@@ -248,6 +263,44 @@ function GlobalSettingsCard() {
               placeholder="••••••••"
               value={form.api_key}
               onChange={(e) => setForm({ ...form, api_key: e.target.value })}
+              className="mt-1"
+            />
+          </div>
+          <div className="pt-2 border-t border-border">
+            <h3 className="font-medium mb-1">Personalizacao das campanhas</h3>
+            <p className="text-xs text-muted-foreground mb-3">
+              Use uma opcao por linha. Essas listas alimentam variaveis como <span className="font-mono">{"{{saudacao}}"}</span>,
+              <span className="font-mono"> {"{{nome}}"}</span>, <span className="font-mono">{"{{primeiro_nome}}"}</span>,
+              <span className="font-mono"> {"{{nome_ou_variavel}}"}</span> e <span className="font-mono">{"{{variacao}}"}</span>.
+            </p>
+          </div>
+          <div>
+            <Label>Saudacoes aleatorias</Label>
+            <Textarea
+              rows={4}
+              value={form.campaign_greetings}
+              onChange={(e) => setForm({ ...form, campaign_greetings: e.target.value })}
+              placeholder={"Oi\nOla\nBom dia\nBoa tarde"}
+              className="mt-1"
+            />
+          </div>
+          <div>
+            <Label>Nomes substitutos quando o contato estiver sem nome</Label>
+            <Textarea
+              rows={4}
+              value={form.campaign_name_fallbacks}
+              onChange={(e) => setForm({ ...form, campaign_name_fallbacks: e.target.value })}
+              placeholder={"amigo\ncliente\ncontato"}
+              className="mt-1"
+            />
+          </div>
+          <div>
+            <Label>Variacoes aleatorias para deixar cada mensagem diferente</Label>
+            <Textarea
+              rows={5}
+              value={form.campaign_message_variants}
+              onChange={(e) => setForm({ ...form, campaign_message_variants: e.target.value })}
+              placeholder={"Se fizer sentido para voce, me responda por aqui.\nPosso te explicar melhor em uma mensagem rapida."}
               className="mt-1"
             />
           </div>
