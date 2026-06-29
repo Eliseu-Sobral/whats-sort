@@ -1,9 +1,9 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
-  listCampaigns, startCampaign, pauseCampaign, resumeCampaign, deleteCampaign, createCampaignFromApproved,
+  listCampaigns, startCampaign, pauseCampaign, resumeCampaign, deleteCampaign, createCampaign, listApprovedCampaignContacts,
 } from "@/lib/campaigns.functions";
 import { getCampaignEngineLabel } from "@/lib/campaign-engine";
 import { Card } from "@/components/ui/card";
@@ -12,6 +12,7 @@ import { Progress } from "@/components/ui/progress";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
@@ -41,6 +42,7 @@ const STATUS_CLASS: Record<string, string> = {
 type CampaignFormValue = {
   name: string;
   message: string;
+  contactIds: string[];
   media_url?: string | null;
   media_kind?: "image" | "audio" | null;
   media_mime_type?: string | null;
@@ -48,6 +50,8 @@ type CampaignFormValue = {
 };
 
 const MAX_MEDIA_SIZE_BYTES = 10 * 1024 * 1024;
+type ContactNameFilter = "all" | "with_name" | "without_name";
+type ContactOrderMode = "recent" | "name_asc" | "name_desc" | "random";
 
 function CampaignsPage() {
   const qc = useQueryClient();
@@ -57,7 +61,8 @@ function CampaignsPage() {
   const pause = useServerFn(pauseCampaign);
   const resume = useServerFn(resumeCampaign);
   const del = useServerFn(deleteCampaign);
-  const createFromApproved = useServerFn(createCampaignFromApproved);
+  const create = useServerFn(createCampaign);
+  const listApproved = useServerFn(listApprovedCampaignContacts);
   const [campaignOpen, setCampaignOpen] = useState(false);
 
   const { data: campaigns, isLoading } = useQuery({
@@ -69,6 +74,13 @@ function CampaignsPage() {
     },
     refetchOnWindowFocus: false,
     staleTime: 10_000,
+    placeholderData: (prev) => prev,
+  });
+
+  const { data: approvedContacts } = useQuery({
+    queryKey: ["campaign-approved-contacts"],
+    queryFn: () => listApproved(),
+    staleTime: 30_000,
     placeholderData: (prev) => prev,
   });
 
@@ -84,9 +96,9 @@ function CampaignsPage() {
   });
 
   const createMutation = useMutation({
-    mutationFn: (vars: CampaignFormValue) => createFromApproved({ data: vars }),
+    mutationFn: (vars: CampaignFormValue) => create({ data: vars }),
     onSuccess: (result: any) => {
-      toast.success("Campanha criada com os contatos aprovados atuais.");
+      toast.success("Campanha criada com os destinatarios selecionados.");
       setCampaignOpen(false);
       qc.invalidateQueries({ queryKey: ["campaigns"] });
       navigate({ to: "/campaigns/$id", params: { id: result.id } });
@@ -174,11 +186,9 @@ function CampaignsPage() {
                       onClick={() => { if (confirm("Excluir esta campanha?")) action.mutate({ id: c.id, action: "delete" }); }}>
                       <Trash2 className="size-4" />
                     </Button>
-                    <Link to="/campaigns/$id" params={{ id: c.id }}>
-                      <Button size="sm">
-                        Detalhes <ArrowRight className="size-3.5" />
-                      </Button>
-                    </Link>
+                    <Button size="sm" onClick={() => navigate({ to: "/campaigns/$id", params: { id: c.id } })}>
+                      Detalhes <ArrowRight className="size-3.5" />
+                    </Button>
                   </div>
                 </div>
               </Card>
@@ -190,6 +200,7 @@ function CampaignsPage() {
       <CampaignCreateDialog
         open={campaignOpen}
         onOpenChange={setCampaignOpen}
+        contacts={(approvedContacts as any[]) || []}
         onSubmit={(value) => createMutation.mutate(value)}
         loading={createMutation.isPending}
       />
@@ -197,18 +208,122 @@ function CampaignsPage() {
   );
 }
 
-function CampaignCreateDialog({ open, onOpenChange, onSubmit, loading }: {
+function CampaignCreateDialog({ open, onOpenChange, contacts, onSubmit, loading }: {
   open: boolean;
   onOpenChange: (value: boolean) => void;
+  contacts: Array<{ id: string; name: string | null; phone_number: string }>;
   onSubmit: (value: CampaignFormValue) => void;
   loading: boolean;
 }) {
   const [name, setName] = useState("");
   const [message, setMessage] = useState("");
+  const [search, setSearch] = useState("");
+  const [sendLimit, setSendLimit] = useState("");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+  const [nameFilter, setNameFilter] = useState<ContactNameFilter>("all");
+  const [orderMode, setOrderMode] = useState<ContactOrderMode>("recent");
+  const [randomSeed, setRandomSeed] = useState(1);
+  const [selected, setSelected] = useState<Record<string, boolean>>({});
   const [mediaPreview, setMediaPreview] = useState<string | null>(null);
   const [mediaKind, setMediaKind] = useState<"image" | "audio" | null>(null);
   const [mediaMimeType, setMediaMimeType] = useState<string | null>(null);
   const [mediaFileName, setMediaFileName] = useState<string | null>(null);
+  const [fileInputKey, setFileInputKey] = useState(0);
+
+  function resetForm() {
+    setName("");
+    setMessage("");
+    setSearch("");
+    setSendLimit("");
+    setPage(1);
+    setPageSize(25);
+    setNameFilter("all");
+    setOrderMode("recent");
+    setRandomSeed((value) => value + 1);
+    setSelected({});
+    setMediaPreview(null);
+    setMediaKind(null);
+    setMediaMimeType(null);
+    setMediaFileName(null);
+    setFileInputKey((value) => value + 1);
+  }
+
+  const orderedContacts = useMemo(() => {
+    if (orderMode === "random") return shuffleContacts(contacts, randomSeed);
+    if (orderMode === "name_asc") {
+      return [...contacts].sort((a, b) => (a.name || "").localeCompare(b.name || "", "pt-BR"));
+    }
+    if (orderMode === "name_desc") {
+      return [...contacts].sort((a, b) => (b.name || "").localeCompare(a.name || "", "pt-BR"));
+    }
+    return contacts;
+  }, [contacts, orderMode, randomSeed]);
+
+  const filteredContacts = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    return orderedContacts.filter((contact) => {
+      if (nameFilter === "with_name" && !contact.name) return false;
+      if (nameFilter === "without_name" && contact.name) return false;
+      if (!term) return true;
+      return (contact.name || "").toLowerCase().includes(term) || contact.phone_number.includes(term);
+    });
+  }, [orderedContacts, search, nameFilter]);
+
+  const pagedContacts = useMemo(() => {
+    const from = (page - 1) * pageSize;
+    return filteredContacts.slice(from, from + pageSize);
+  }, [filteredContacts, page, pageSize]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredContacts.length / pageSize));
+
+  const selectedIds = useMemo(
+    () => orderedContacts.filter((contact) => selected[contact.id]).map((contact) => contact.id),
+    [orderedContacts, selected],
+  );
+
+  const allFilteredSelected = filteredContacts.length > 0 && filteredContacts.every((contact) => selected[contact.id]);
+  const allPageSelected = pagedContacts.length > 0 && pagedContacts.every((contact) => selected[contact.id]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [search, pageSize, nameFilter, orderMode, open]);
+
+  useEffect(() => {
+    if (open) resetForm();
+  }, [open]);
+
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages);
+  }, [page, totalPages]);
+
+  function toggleAllFiltered() {
+    setSelected((current) => {
+      const next = { ...current };
+      if (allFilteredSelected) {
+        filteredContacts.forEach((contact) => delete next[contact.id]);
+      } else {
+        filteredContacts.forEach((contact) => {
+          next[contact.id] = true;
+        });
+      }
+      return next;
+    });
+  }
+
+  function togglePageSelection() {
+    setSelected((current) => {
+      const next = { ...current };
+      if (allPageSelected) {
+        pagedContacts.forEach((contact) => delete next[contact.id]);
+      } else {
+        pagedContacts.forEach((contact) => {
+          next[contact.id] = true;
+        });
+      }
+      return next;
+    });
+  }
 
   async function handleFileChange(file: File | null) {
     if (!file) {
@@ -239,17 +354,135 @@ function CampaignCreateDialog({ open, onOpenChange, onSubmit, loading }: {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="bg-surface">
+      <DialogContent className="bg-surface max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Nova campanha</DialogTitle>
           <DialogDescription>
-            A campanha sera criada com todos os contatos aprovados disponiveis neste momento. Nao e necessario concluir 100% da triagem.
+            Escolha os destinatarios aprovados e defina, se quiser, um limite de disparos para esta campanha.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
+          <div className="rounded-md border border-primary/20 bg-primary/5 px-3 py-2 text-sm text-muted-foreground">
+            {contacts.length} contato(s) aprovado(s) disponivel(is) para selecao neste momento.
+          </div>
           <div>
             <Label>Nome da campanha</Label>
             <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex: Promocao Black Friday" />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label>Buscar destinatario</Label>
+              <Input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Buscar por nome ou telefone"
+                className="mt-1"
+              />
+            </div>
+            <div>
+              <Label>Quantidade de disparos</Label>
+              <Input
+                type="number"
+                min="1"
+                max={selectedIds.length || contacts.length || 1}
+                value={sendLimit}
+                onChange={(e) => setSendLimit(e.target.value)}
+                placeholder={selectedIds.length ? String(selectedIds.length) : "Todos os selecionados"}
+                className="mt-1"
+              />
+            </div>
+          </div>
+          <div className="grid grid-cols-3 gap-3">
+            <div>
+              <Label>Filtro</Label>
+              <select
+                value={nameFilter}
+                onChange={(e) => setNameFilter(e.target.value as ContactNameFilter)}
+                className="mt-1 flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              >
+                <option value="all">Todos os aprovados</option>
+                <option value="with_name">Com nome</option>
+                <option value="without_name">Sem nome</option>
+              </select>
+            </div>
+            <div>
+              <Label>Ordenacao</Label>
+              <select
+                value={orderMode}
+                onChange={(e) => setOrderMode(e.target.value as ContactOrderMode)}
+                className="mt-1 flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              >
+                <option value="recent">Mais recentes</option>
+                <option value="name_asc">Nome A-Z</option>
+                <option value="name_desc">Nome Z-A</option>
+                <option value="random">Aleatorio</option>
+              </select>
+            </div>
+            <div>
+              <Label>Itens por pagina</Label>
+              <select
+                value={String(pageSize)}
+                onChange={(e) => setPageSize(Number(e.target.value))}
+                className="mt-1 flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              >
+                <option value="10">10</option>
+                <option value="25">25</option>
+                <option value="50">50</option>
+              </select>
+            </div>
+          </div>
+          {orderMode === "random" && (
+            <div className="flex justify-end">
+              <Button type="button" variant="outline" size="sm" onClick={() => setRandomSeed((value) => value + 1)}>
+                Sortear novamente
+              </Button>
+            </div>
+          )}
+          <div className="rounded-md border border-border">
+            <div className="flex items-center justify-between border-b border-border px-3 py-2">
+              <div className="flex items-center gap-4">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <Checkbox checked={allFilteredSelected} onCheckedChange={toggleAllFiltered} />
+                  <span className="text-sm">Selecionar todos os filtrados</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <Checkbox checked={allPageSelected} onCheckedChange={togglePageSelection} />
+                  <span className="text-sm">Selecionar esta pagina</span>
+                </label>
+              </div>
+              <div className="text-xs text-muted-foreground">
+                {selectedIds.length} selecionado(s) de {contacts.length}
+              </div>
+            </div>
+            <div className="max-h-64 overflow-y-auto divide-y divide-border">
+              {pagedContacts.length ? pagedContacts.map((contact) => (
+                <label key={contact.id} className="flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-secondary/30">
+                  <Checkbox
+                    checked={!!selected[contact.id]}
+                    onCheckedChange={(value) => setSelected((current) => ({ ...current, [contact.id]: !!value }))}
+                  />
+                  <div className="min-w-0">
+                    <div className="text-sm truncate">{contact.name || "Sem nome"}</div>
+                    <div className="text-xs text-muted-foreground">+{contact.phone_number}</div>
+                  </div>
+                </label>
+              )) : (
+                <div className="px-3 py-4 text-sm text-muted-foreground">Nenhum contato aprovado encontrado.</div>
+              )}
+            </div>
+            <div className="flex items-center justify-between border-t border-border px-3 py-2 text-xs text-muted-foreground">
+              <span>
+                Pagina {page} de {totalPages} · Exibindo {pagedContacts.length} de {filteredContacts.length} filtrado(s)
+              </span>
+              <div className="flex gap-2">
+                <Button type="button" variant="outline" size="sm" onClick={() => setPage((value) => Math.max(1, value - 1))} disabled={page === 1}>
+                  Anterior
+                </Button>
+                <Button type="button" variant="outline" size="sm" onClick={() => setPage((value) => Math.min(totalPages, value + 1))} disabled={page === totalPages}>
+                  Proxima
+                </Button>
+              </div>
+            </div>
           </div>
           <div>
             <Label>Mensagem</Label>
@@ -263,6 +496,7 @@ function CampaignCreateDialog({ open, onOpenChange, onSubmit, loading }: {
           <div>
             <Label>Arquivo opcional (foto ou audio)</Label>
             <Input
+              key={fileInputKey}
               type="file"
               accept="image/*,audio/*"
               onChange={(e) => void handleFileChange(e.target.files?.[0] || null)}
@@ -285,17 +519,24 @@ function CampaignCreateDialog({ open, onOpenChange, onSubmit, loading }: {
           </div>
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
+          <Button variant="outline" onClick={() => {
+            resetForm();
+            onOpenChange(false);
+          }}>Cancelar</Button>
           <Button
-            onClick={() => onSubmit({
-              name,
-              message,
-              media_url: mediaPreview,
-              media_kind: mediaKind,
-              media_mime_type: mediaMimeType,
-              media_file_name: mediaFileName,
-            })}
-            disabled={!name.trim() || !message.trim() || loading}
+            onClick={() => {
+              const limit = Math.max(1, Math.min(Number(sendLimit) || selectedIds.length, selectedIds.length));
+              onSubmit({
+                name,
+                message,
+                contactIds: selectedIds.slice(0, limit),
+                media_url: mediaPreview,
+                media_kind: mediaKind,
+                media_mime_type: mediaMimeType,
+                media_file_name: mediaFileName,
+              });
+            }}
+            disabled={!name.trim() || !message.trim() || !selectedIds.length || loading}
           >
             {loading ? "Criando..." : "Criar campanha"}
           </Button>
@@ -318,4 +559,15 @@ function readFileAsDataUrl(file: File) {
     reader.onerror = () => reject(new Error("Nao foi possivel ler o arquivo selecionado."));
     reader.readAsDataURL(file);
   });
+}
+
+function shuffleContacts<T>(items: T[], seed: number) {
+  const next = [...items];
+  let currentSeed = seed * 9301 + 49297;
+  for (let index = next.length - 1; index > 0; index--) {
+    currentSeed = (currentSeed * 233280 + 1) % 233280;
+    const randomIndex = Math.floor((currentSeed / 233280) * (index + 1));
+    [next[index], next[randomIndex]] = [next[randomIndex], next[index]];
+  }
+  return next;
 }

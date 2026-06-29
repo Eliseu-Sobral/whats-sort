@@ -66,6 +66,9 @@ function ContactsPage() {
   const { data: contactsData, isLoading } = useQuery({
     queryKey: ["contacts", status, page],
     queryFn: () => list({ data: { status, page, pageSize: PAGE_SIZE } }),
+    placeholderData: (previousData) => previousData,
+    refetchOnWindowFocus: false,
+    staleTime: 10_000,
   });
 
   const contacts = contactsData?.rows ?? [];
@@ -74,12 +77,13 @@ function ContactsPage() {
   const visiblePages = getVisiblePages(page, totalPages);
 
   useEffect(() => {
+    if (!contactsData) return;
     if (totalPages === 0 && page !== 1) {
       setPage(1);
       return;
     }
     if (totalPages > 0 && page > totalPages) setPage(totalPages);
-  }, [page, totalPages]);
+  }, [contactsData, page, totalPages]);
 
   const selectedIds = useMemo(
     () => Object.entries(selected).filter(([, value]) => value).map(([id]) => id),

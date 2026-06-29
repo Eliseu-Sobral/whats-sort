@@ -92,6 +92,31 @@ export const createCampaignFromApproved = createServerFn({ method: "POST" })
     return createCampaignWithContacts(context, data, contacts);
   });
 
+export const listApprovedCampaignContacts = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const pageSize = 1000;
+    const rows: Array<{ id: string; name: string | null; phone_number: string }> = [];
+
+    for (let page = 0; ; page++) {
+      const from = page * pageSize;
+      const to = from + pageSize - 1;
+      const { data, error } = await context.supabase
+        .from("contacts")
+        .select("id, name, phone_number")
+        .eq("user_id", context.userId)
+        .eq("status", "aprovado")
+        .order("updated_at", { ascending: false })
+        .range(from, to);
+      if (error) throw new Error(error.message);
+      if (!data?.length) break;
+      rows.push(...data);
+      if (data.length < pageSize) break;
+    }
+
+    return rows;
+  });
+
 export const listCampaigns = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
