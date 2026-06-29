@@ -166,6 +166,8 @@ export const startCampaign = createServerFn({ method: "POST" })
       started_at: new Date().toISOString(),
       last_status_text: `Iniciando disparos. ${getCampaignEngineLabel()}`,
     });
+    const { processDueCampaigns } = await import("@/lib/campaign-dispatch");
+    await processDueCampaigns({ campaignId: data.id, forceNow: true, limit: 1 });
     return { ok: true };
   });
 
@@ -185,6 +187,8 @@ export const resumeCampaign = createServerFn({ method: "POST" })
       next_run_at: new Date().toISOString(),
       last_status_text: `Retomando disparos. ${getCampaignEngineLabel()}`,
     });
+    const { processDueCampaigns } = await import("@/lib/campaign-dispatch");
+    await processDueCampaigns({ campaignId: data.id, forceNow: true, limit: 1 });
     return { ok: true };
   });
 
