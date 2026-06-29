@@ -75,9 +75,5 @@ export function renderCampaignMessage(
     .replace(/\{\{\s*telefone\s*\}\}/gi, contact.phone_number || "")
     .replace(/\{\{\s*variacao\s*\}\}/gi, variant);
 
-  if (!hasVariantPlaceholder && variant) {
-    rendered = `${rendered}\n\n${variant}`;
-  }
-
   return rendered.replace(/\n{3,}/g, "\n\n").trim();
 }
